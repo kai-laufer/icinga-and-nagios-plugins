@@ -1,0 +1,83 @@
+#!/usr/bin/python
+"""
+#################################################################################
+# Program:      check_xtradb_cluster		                                #
+# Version:      0.1                                                             #
+# Author:       Kai Laufer                                                      #
+# Contact:      mail@kai-laufer.de                                              #
+# Release date: 2014-10-17                                                      #
+# Description:  This script checks the status of PXC		                #
+# ============================================================================= #
+# Last change:  2014-10-17                                                      #
+#################################################################################
+"""
+
+# Importing some neccessary libraries
+import MySQLdb as mysql, argparse, sys
+
+# Parsing given arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("-u", "--user", help="MySQL-user for database connection", required=True)
+parser.add_argument("-p", "--password", help="MySQL-password for database connection", required=True)
+parser.add_argument("-H", "--host", help="DB-Host you want to connect", required=True)
+parser.add_argument("-n", "--nodes", help="Number of nodes in cluster", type=int, required=True)
+args = parser.parse_args()
+
+# Defining MySQL-command configuration
+host 	 = args.host
+user 	 = args.user
+password = args.password
+nodes	 = args.nodes
+
+# Queries which are executed for checking
+# Percona XtraDB Cluster health
+queryStatus 	  = "SHOW STATUS LIKE 'wsrep_local_state_comment'"
+queryClusterSize  = "SHOW STATUS LIKE 'wsrep_cluster_size'"
+queryLastCommited = "SHOW STATUS LIKE 'wsrep_last_committed'"
+
+# Establish MySQL-connection
+db	= mysql.connect(host=host, user=user, passwd=password)
+cursor	= db.cursor()
+
+# Execute function for doing all stuff
+# 1)
+#	Executing all defined queries and saving results in list
+# 2)
+#	Checking state of PXC
+#	Possible results are Synced, Joined, Donor/Desynced, Joining
+# 3)
+#	Comparing count of active nodes with given argument
+# 4)
+#	Getting last commited transaction
+def execute(user, password, host, queryStatus, queryClusterSize, queryLastCommited, nodes):
+	results = [queryStatus, queryClusterSize, queryLastCommited]
+	myResult = []
+	for query in range(len(results)):
+		cursor.execute(results[query])
+		result = cursor.fetchone()
+		myResult += result
+	if myResult[1] != "Synced":
+		resultString = "State CRITICAL: %s ;;; " % (myResult[1])
+	else:
+		resultString = "State OK: %s ;;; " % (myResult[1])
+	if int(myResult[3]) != nodes:
+		resultString = resultString + "Nodes in Cluster CRITICAL: %s ;;; " % (myResult[3])
+	else:
+		resultString = resultString + "Nodes in Cluster OK: %s ;;; " % (myResult[3])
+	resultString = resultString + "Last commited transaction: %s ;;; " % (myResult[5])
+	return resultString
+        db.close()
+
+# Getting results
+# Executing the execute-function
+result = execute(user, password, host, queryStatus, queryClusterSize, queryLastCommited, nodes)
+
+# Print results
+print result
+
+# Exit state
+# Check if result contains the word "CRITICAL"
+if "CRITICAL" in result:
+	sys.exit(2)
+else:
+	sys.exit(0)
