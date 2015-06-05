@@ -1,0 +1,100 @@
+#!/bin/bash
+
+#################################################################################
+# Program: 	check_mysql_process					   	#
+# Version: 	1.0							 	#
+# Author:	Kai Laufer						  	#
+# Contact:	mail@kai-laufer.de				      		#
+# Release date: 2014-06-04						  	#
+# License:	GNU/GPL								#
+# Description:  This script simply checks if the mysql process is running   	#
+#		and if the database 'mysql' exists (for trying to establish 	#
+#		a MySQL connection)					 	#
+# ============================================================================= #
+# Last change:  2014-09-09							#
+#################################################################################
+
+# Program name and version
+readonly PROG_VERSION="1.0"
+readonly PROG_NAME=$(basename $0)
+readonly PATH_NAME=$(readlink -m $(dirname $0))
+readonly ARGS=$@
+
+# Help
+print_help() {
+	echo "${PROG_NAME} is an Icinga/Nagios plugin for checking if MySQL is running"
+	echo "	--help     | -h     = Print this help"
+	echo "	--user     | -u     = MySQL user (if -u is not set, the program will use 'root' as default user)"
+	echo "	--password | -p     = MySQL password"
+	echo "	Example: $PATH_NAME/${PROG_NAME} -u mysql-username -p mysql-password"
+	exit 3;
+}
+
+check_params() {
+# Check given parameters
+	while test -n "$1"; do
+		case "$1" in
+			--help|-h)
+				print_help
+	       	     	    	;;
+	       	 	--version|-v)
+	            	    	echo ${PROG_VERSION}
+	            	    	exit 3;
+	            	    	;;
+	        	--user|-u)
+	            	    	MYSQL_USER=$2
+	            	    	shift
+	            	    	;;
+			--password|-p)
+				readonly MYSQL_PASSWORD=$2
+				shift
+				;;
+	        	*)
+	            	    	echo "Unknown argument: $1"
+	            	    	print_help
+	            	    	exit 3;
+	            	    	;;
+	        esac
+		shift
+	done
+}
+
+check_user() {
+	# Check if MySQL user is set
+	# Otherwise set root as default MySQL user
+	if [[ -z "${MYSQL_USER}" ]];then
+		MYSQL_USER="root"
+	fi
+}
+
+check_connection() {
+	# Check MySQL connection
+	readonly CHECK_CONN=$(mysql --user=${MYSQL_USER} --password=${MYSQL_PASSWORD} -e "show databases;" | grep "mysql" | wc -l)
+}
+
+connect_db() {
+	# Check definitions (If your MySQL-process is not /usr/sbin/mysqld you can change
+	# this setting here)
+	local PROCESS_NAME='/usr/sbin/mysqld'
+	local GET_PID=$(pgrep -f $PROCESS_NAME)
+	if [[ -z "${GET_PID}" ]];then
+		echo "CRITICAL: MySQL is not running - No PID found"
+		RET=2
+	elif [ ${CHECK_CONN} -lt 1 ];then
+		echo "WARNING: MySQL PID ${GET_PID} found but unable to connect MySQL"
+		RET=1
+	else
+		echo "OK: MySQL is running with PID ${GET_PID}"
+		RET=0
+	fi
+}
+
+main() {
+	check_params ${ARGS}
+	check_user ${MYSQL_USER}
+	check_connection ${MYSQL_USER} ${MYSQL_PASSWORD}
+	connect_db ${MYSQL_USER} ${MYSQL_PASSWORD} ${CHECK_CONN}
+	exit ${RET}
+}
+
+main
